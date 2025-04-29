@@ -36,7 +36,7 @@ template_name = "omni.usd_viewer"
 "omni.usd_viewer.samples" = {}
 "usdrt.scenegraph" = {}
 "my_company.my_usd_viewer_setup_extension" = { order = 1000 }
-
+"omni.gsplat.viewport" = {}
 
 [settings.persistent.app]
 viewport.defaults.tickRate = 60  # Lock to 60fps
@@ -81,7 +81,8 @@ scene.lights.visible = false
 [settings.app.exts]
 folders.'++' = [  # Search paths for extensions.
     "${app}/../exts",
-    "${app}/../extscache/"
+    "${app}/../extscache/",
+    "${app}/../extensions"
 ]
 
 [settings.app.file]

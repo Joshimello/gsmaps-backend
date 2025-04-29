@@ -10,6 +10,7 @@
 
 from .stage_loading import LoadingManager
 from .stage_management import StageManager
+from .camera_control import CameraManager
 import omni.ext
 
 
@@ -25,6 +26,7 @@ class Extension(omni.ext.IExt):
         # Internal messaging state
         self._loading_manager: LoadingManager = LoadingManager()
         self._stage_manager: StageManager = StageManager()
+        self._camera_manager: CameraManager = CameraManager()
 
     def on_shutdown(self):
         """This is called every time the extension is deactivated. It is used to
@@ -36,3 +38,6 @@ class Extension(omni.ext.IExt):
         if self._stage_manager:
             self._stage_manager.on_shutdown()
             self._stage_manager = None
+        if self._camera_manager:
+            self._camera_manager.on_shutdown()
+            self._camera_manager = None

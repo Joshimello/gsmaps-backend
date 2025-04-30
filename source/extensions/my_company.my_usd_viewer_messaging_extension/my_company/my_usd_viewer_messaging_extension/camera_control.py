@@ -70,6 +70,10 @@ class CameraManager:
             ctx = omni.usd.get_context()
             stage = ctx.get_stage()
             camera_path = get_active_viewport_camera_string()
+
+            if stage is None:
+                return
+
             camera_prim = stage.GetPrimAtPath(camera_path)
 
             if camera_prim:

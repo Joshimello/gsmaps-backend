@@ -79,7 +79,7 @@ class CameraManager:
 
                     rotate_attr = camera_prim.GetAttribute('xformOp:rotateYXZ')
                     if rotate_attr:
-                        rotate_attr.Set(tuple([rotation[0], -rotation[1], 0]))  # [y_rot, x_rot, z_rot]
+                        rotate_attr.Set(tuple([0, -rotation[1], 0]))  # [y_rot, x_rot, z_rot]
                 print(f"Teleported camera to position {position} and looking at target with rotation YXZ {rotation}")
 
 

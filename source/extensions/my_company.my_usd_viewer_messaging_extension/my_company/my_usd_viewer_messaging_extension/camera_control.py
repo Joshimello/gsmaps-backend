@@ -1,5 +1,5 @@
 import asyncio
-from pxr import Gf, UsdGeom, Usd
+from pxr import Gf, UsdGeom, Usd, Sdf
 
 import carb
 import carb.events
@@ -11,7 +11,7 @@ import math
 import numpy as np
 import omni.kit.pipapi
 omni.kit.pipapi.install("scipy", module="scipy")
-from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Rotation as R
 
 class CameraManager:
     """Manages camera position and rotation"""
@@ -41,48 +41,33 @@ class CameraManager:
         if event.type == carb.events.type_from_string("teleportCameraRequest"):
             payload = event.payload
             position = payload['position']  # e.g., [0.0, 0.0, 10.0]
-            euler_angles = payload['rotation']  # e.g., [0.0, 0.0, 0.0]
-
-            print(euler_angles)
-            eular_degrees = np.degrees(euler_angles)
-
-            # C2W = np.eye(4)
-            # C2W[:3, :3] = Rotation.from_euler('xyz', euler_angles).as_matrix()
-            # C2W[:3, 3] = position
-
-            # W2C = np.linalg.inv(C2W)
-
-            # ISAAC_SIM_TO_GS_CONVENTION = np.array([
-            #     [1,  0,  0, 0],
-            #     [0, -1,  0, 0],
-            #     [0,  0, -1, 0],
-            #     [0,  0,  0, 1]
-            # ])
-            # W2C = ISAAC_SIM_TO_GS_CONVENTION @ W2C
-
-            # R = W2C[:3, :3].T
-            # T = W2C[:3, 3]
-
-            # rotation = Rotation.from_matrix(R).as_euler('yxz', degrees=True)
-
-            # rotation = [math.degrees(angle) for angle in rotation]
+            quaternion = payload['quaternion']
+            euler_angles = R.from_quat(quaternion).as_euler('xyz', degrees=True)
 
             ctx = omni.usd.get_context()
             stage = ctx.get_stage()
             camera_path = get_active_viewport_camera_string()
+
+            if stage is None:
+                return
+
             camera_prim = stage.GetPrimAtPath(camera_path)
 
             if camera_prim:
                 with Usd.EditContext(stage, Usd.EditTarget(stage.GetSessionLayer())):
-            #         translate_attr = camera_prim.GetAttribute('xformOp:translate')
-            #         if translate_attr:
-            #             translate_attr.Set(tuple(position))
+                    translate_attr = camera_prim.GetAttribute('xformOp:translate')
+                    translate_attr.Set(tuple(position))
 
-                    rotate_attr = camera_prim.GetAttribute('xformOp:rotateYXZ')
-                    if rotate_attr:
-                        rotate_attr.Set(tuple([-eular_degrees[1], eular_degrees[0], 0]))  # [y_rot, x_rot, z_rot]
-            #     print(f"Teleported camera to position {position} and looking at target with rotation YXZ {rotation}")
+                    rotate_attr = camera_prim.GetAttribute('xformOp:rotateXYZ')
+                    if not rotate_attr:
+                        rotate_attr = camera_prim.CreateAttribute('xformOp:rotateXYZ', Sdf.ValueTypeNames.Float3)
+                    rotate_attr.Set(tuple(euler_angles))
 
+                    xformOpOrder_attr = camera_prim.GetAttribute('xformOpOrder')
+                    # Note that rotateYXZ is used in the USD viewer template
+                    xformOpOrder_attr.Set(['xformOp:translate', 'xformOp:rotateXYZ', 'xformOp:scale'])
+
+                    print(f"position: {position}, rotation: {euler_angles}")
 
 
     def on_shutdown(self):

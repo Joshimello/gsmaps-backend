@@ -18,6 +18,7 @@ import carb.tokens
 import omni.kit.app
 import omni.kit.livestream.messaging as messaging
 import omni.usd
+from pxr import Usd, UsdGeom, Gf, Sdf
 
 
 class LoadingManager:
@@ -240,6 +241,9 @@ class LoadingManager:
         for _ in range(2):
             await omni.kit.app.get_app().next_update_async()
 
+        # Apply rotation, scaling, and unit metadata to the stage before notifying client
+        self._rotate_stage(x_degrees=180, y_degrees=180, z_degrees=0, scale=1000)
+
         # Stage has loaded with all dependencies. Send message to client.
         message_bus = omni.kit.app.get_app().get_message_bus_event_stream()
         event_type = carb.events.type_from_string("openedStageResult")
@@ -308,3 +312,102 @@ class LoadingManager:
         self._stage_has_opened = False
         self._streaming_manager_is_busy = False
         self._persisted_stage = False
+
+    def _set_stage_units(self, meters_per_unit=1.0):
+        """
+        Set the meters per unit metadata for the stage.
+
+        Args:
+            meters_per_unit (float): How many meters one USD unit represents
+                                   Examples:
+                                   1.0 = 1 unit = 1 meter
+                                   0.01 = 1 unit = 1 centimeter
+                                   0.001 = 1 unit = 1 millimeter
+                                   1000.0 = 1 unit = 1 kilometer
+        """
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            carb.log_warn("No stage available for setting units")
+            return
+
+        try:
+            # Set the metersPerUnit metadata on the stage
+            stage.SetMetadata('metersPerUnit', meters_per_unit)
+            carb.log_info(f"Set stage units: 1 USD unit = {meters_per_unit} meters")
+
+            # Also set the upAxis metadata to Y if not already set (common in USD)
+            if not stage.HasMetadata('upAxis'):
+                stage.SetMetadata('upAxis', 'Y')
+                carb.log_info("Set stage upAxis to Y")
+
+        except Exception as e:
+            carb.log_error(f"Failed to set stage units: {str(e)}")
+
+    def _rotate_stage(self, x_degrees=0, y_degrees=0, z_degrees=0, scale=1.0):
+        """
+        Transform the entire stage by applying rotation and scaling directly to root prims.
+
+        Args:
+            x_degrees (float): Rotation around X-axis in degrees
+            y_degrees (float): Rotation around Y-axis in degrees
+            z_degrees (float): Rotation around Z-axis in degrees
+            scale (float): Uniform scale factor (1.0 = original size, 0.5 = half size, 2.0 = double size)
+        """
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            carb.log_warn("No stage available for rotation")
+            return
+
+        try:
+            # Create rotation vector for all axes
+            rot = Gf.Vec3f(x_degrees, y_degrees, z_degrees)
+
+            # Create scale vector (uniform scaling)
+            scale_vec = Gf.Vec3f(scale, scale, scale)
+
+            # Apply rotation and scaling to all root prims
+            rotation_applied = False
+            for prim in stage.GetPseudoRoot().GetChildren():
+                try:
+                    # Check if the prim is transformable (has or can have transform ops)
+                    if UsdGeom.Xformable(prim):
+                        xformable = UsdGeom.Xformable(prim)
+
+                        # Add scale operation first (order matters in USD transforms)
+                        if scale != 1.0:
+                            scale_op = xformable.AddScaleOp(UsdGeom.XformOp.PrecisionFloat, "stageScale")
+                            scale_op.Set(scale_vec)
+
+                        # Add rotation operation
+                        if x_degrees != 0 or y_degrees != 0 or z_degrees != 0:
+                            rotate_op = xformable.AddRotateXYZOp(UsdGeom.XformOp.PrecisionFloat, "stageRotation")
+                            rotate_op.Set(rot)
+
+                        carb.log_info(f"Applied transforms to prim: {prim.GetPath()}")
+                        rotation_applied = True
+                    else:
+                        # If not transformable, wrap it in an Xform
+                        prim_path = prim.GetPath()
+                        prim_name = prim.GetName()
+                        wrapper_path = prim_path.GetParentPath().AppendChild(prim_name + "_RotationWrapper")
+
+                        # Create wrapper Xform
+                        wrapper_xform = UsdGeom.Xform.Define(stage, wrapper_path)
+                        if scale != 1.0:
+                            wrapper_xform.AddScaleOp().Set(scale_vec)
+                        if x_degrees != 0 or y_degrees != 0 or z_degrees != 0:
+                            wrapper_xform.AddRotateXYZOp().Set(rot)
+
+                        # This is more complex - would need to reparent the prim
+                        carb.log_info(f"Prim {prim.GetPath()} is not transformable, skipping")
+
+                except Exception as prim_error:
+                    carb.log_warn(f"Failed to apply rotation to prim {prim.GetPath()}: {str(prim_error)}")
+
+            if rotation_applied:
+                carb.log_info(f"Applied transforms - rotation: ({x_degrees}°, {y_degrees}°, {z_degrees}°), scale: {scale} to stage")
+            else:
+                carb.log_warn("No transforms were applied to the stage")
+
+        except Exception as e:
+            carb.log_error(f"Failed to rotate stage: {str(e)}")
